@@ -1,0 +1,759 @@
+---
+title: "Emulador de Blackjack"
+author: |
+  Oscar Miguel Ortega Lozano - 2220528 
+  
+  Juan David Toloza Parada - 2221067 
+  
+  Luna Valentina Gaona Mateus - 2215554
+
+date: "2024-11-26"
+output: 
+  html_document:
+    css: "estilos.css"
+    theme: journal
+    highlight: kate
+    df_print: paged
+---
+
+<!-- 
+Para el buen funcionamiento del Rmarkdown instale las lisguientes librerias:
+library(knitr) 
+library(DT) 
+library(magrittr) 
+library(utils) 
+library(ggplot2)
+-->
+
+```{r setup, include=FALSE}
+source("Implementacion.R")
+```
+
+## {.tabset .tabset-fade .tabset-pills}
+
+### Teoria
+
+<div style="text-align: center;">
+  <h2>¿Cómo se juega?</h2>
+</div>
+
+&nbsp; 
+
+El Blackjack, también conocido como "21", es un juego de cartas popular en casinos que combina estrategia y azar, en el que los jugadores compiten contra el dealer para obtener una mano cuya suma sea lo más cercana posible a 21 sin exceder ese valor, este se juega usando una o más barajas estándar de 52 cartas. 
+
+
+Las cartas tienen los siguientes valores:
+
+**-** Las cartas numéricas (2-10) valen su número.  
+**-** Las letras (J, Q, K) valen 10.  
+**-** El As puede valer 1 o 11, dependiendo de qué sea más favorable para la mano.
+
+```{r blackjack_tablas, message=FALSE, warning=FALSE, echo=FALSE}
+library(DT)
+
+cartas <- data.frame(
+  Carta = rep(c(2:10, "J", "Q", "K", "A"), 4),
+  Valor = rep(c(2:10, 10, 10, 10, "1 ∨ 11"), 4),
+  Pinta = rep(c("♥", "♣️", "♦️", "♠️"), each = 13)
+
+)
+
+tabla_cartas <- DT::datatable(
+  cartas,
+  rownames = FALSE,
+  options = list(
+    pageLength = 13,
+    lengthMenu = list(c(13, 26, 39, 52), c('13', '26', '39', '52')),
+    columnDefs = list(
+      list(targets = "_all", className = "dt-center", visible = TRUE)
+    )
+  )
+) %>%
+  DT::formatStyle(
+    'Pinta', 
+    color = DT::styleEqual(
+      c("♥", "♦️"),
+      c("red", "red") 
+    )
+  )
+
+tabla_cartas
+
+```
+
+
+
+---
+ **Reglas de juego**
+
+
+- El jugador y el dealer reciben dos cartas. 
+- Las cartas del jugador están boca arriba, el dealer tiene una carta visible y otra oculta (**hole card**).
+- El dealer revela su carta oculta después de que el jugador completa su turno.
+- El dealer debe tomar cartas hasta alcanzar al menos 17.
+
+- Si las dos primeras cartas del jugador suman exactamente 21, el jugador tiene un **Blackjack** y gana automáticamente siempre y cuando el dealer no tenga un Blackjack tambien.
+
+- Si el jugador y el dealer tienen la misma puntuación, es un empate (**push**) y el jugador recupera su apuesta.
+
+- Si la mano del jugador supera 21, este pierde automáticamente (**bust**).
+- Si la mano del dealer supera 21, el jugador gana automáticamente.
+- El jugador pierde si el dealer tiene una mano más cercana a 21 que la de el al finalizar la ronda.
+
+**Acciones del jugador**
+
+- Pedir carta (**Hit**): El jugador puede pedir más cartas para acercarse a 21.
+   
+- Plantarse (**Stand**): El jugador decide no tomar más cartas.
+
+- Doblar (**Double Down**): El jugador puede duplicar su apuesta inicial, pero solo recibirá una carta adicional.
+
+- Dividir (**Split**): Si las dos primeras cartas tienen el mismo valor, el jugador puede dividirlas en dos manos separadas pero debe colocar una apuesta adicional igual a la apuesta original en la nueva mano.
+   
+- Seguro (**Insurance**): Si la carta visible del dealer es un As, el jugador puede apostar la mitad del valor de su apuesta inicial a que el dealer tiene Blackjack, si es cierto, el jugador gana el doble del monto apostado en el seguro, compensando la pérdida de su apuesta original.
+
+
+
+
+
+![](https://olytv.es/wp-content/uploads/sites/6/2024/01/how-to-play-blackjack-lead.jpg){width=50% height=250px .center}
+
+&nbsp; 
+
+### Probabilidades
+
+<div style="text-align: center;">
+  <h2>Probabilidades</h2>
+</div>
+
+
+
+**DOS CARTAS**
+
+En la primera fase del Blackjack, el jugador recibe dos cartas con el objetivo de acercarse lo máximo posible a 21 puntos sin excederlos, teniendo en cuenta el número de combinaciones al sacar 2 cartas de las 52 encontradas en la baraja se obtiene el siguiente resultado:
+
+ \begin{equation}
+         C_{k}^{n} = \frac{n!} {(n-k)! k!}
+     \end{equation}
+\begin{equation}
+         C_{2}^{52} = \frac{52!} {(52-2)! 2!}
+     \end{equation}
+
+Valor que indica el numero de combinaciones al recibir dos cartas sin importar el orden en que se obtengan, ahora, la probabilidad de que salga un blackjack es obtenida de la siguiente manera:
+
+4 Ases y 16 cartas con valor 10 (4 × 10, 4 × J, 4 × Q, 4 × K)
+
+Total de combinaciones para un blackjack:
+
+ \begin{equation}
+         4 * 16 = 64
+     \end{equation}
+
+En proporción al total de manos posibles se encuentra la probabilidad de obtener un blackjack en una mano inicial:
+
+\begin{equation}
+         P = \frac{64} {1326} ≈ 4.83%
+     \end{equation}
+
+
+**TRES CARTAS:**
+
+Cuando el jugador decide solicitar una carta adicional, el juego se amplía a tres cartas, lo que introduce nuevas probabilidades y riesgos. La distribución estadística para esta situación muestra lo siguiente:
+
+Blackjack con 3 Cartas
+
+Para obtener 21 puntos con 3 cartas, buscamos todas las combinaciones donde la suma de los valores sea exactamente 21.
+
+\begin{equation}
+	\sum_{i=1}^3 v_i = 21, \quad v_i \in \{1, 2, \dots, 10, 11\}.
+\end{equation}
+
+El número de combinaciones posibles es:
+\begin{equation}
+	C_{3}^{52} = \frac{52!}{3!(52-3)!}.
+  \end{equation}
+
+Sustituyendo:
+\begin{equation}
+	C_{3}^{52} = \frac{52 \cdot 51 \cdot 50}{3!} = 22,100.
+\end{equation}
+
+De estas combinaciones, las que cumplen la condición \(\sum_{i=1}^3 v_i = 21\) se analizan caso por caso, obteniendo asi la siguiente tabla:
+
+![](\Users\PC\Desktop\UIS\6 semestre\Estadistica l\Estadistica1_E2_ProyectoFinal_Team5\informe\imagenes\probabilidades.png){width=50% .center}
+
+&nbsp; 
+
+### Objetivo
+
+<div style="text-align: center;">
+  <h2>Problema a tratar</h2>
+</div>
+
+Actualmente conocemos que probabilidades tenemos de ganar obteniendo un 21 o de perder pasándonos de dicha cifra en un contexto en el cual jugamos únicamente nosotros contra el dealer, sin embargo, esta probabilidad se basa en una única ronda de juego, es decir, jugamos una vez y nos retiramos. La situación cambia si jugamos varias partidas, ya que cada vez que se extraen cartas de la baraja el espacio muestral se altera, afectando las probabilidades de los siguientes juegos en razon de que cartas han salido. Por otro lado, el resultado de cada partida no depende unicamente de nuestra "suerte", sino también de la del dealer, debido que la mano que el tenga influye directamente en el resultado de cada partida, teniendo esto en cuenta surge las siguientes preguntas:
+
+**¿Qué pasaría si nos plantáramos a jugar hasta que las cartas de la baraja sean insuficientes para continuar?**
+
+**¿Quién obtendría ganancias a largo plazo, nosotros o la casa de apuestas?**
+
+**¿Siempre es asi o de que depende?**
+
+Para abordar estas incognitas, primero debemos saber que el Blackjack es conocido por ofrecer al jugador una ventaja relativamente alta en comparación con otros juegos de azar, sin embargo, esta ventaja puede disminuir o incrementarse con el uso de diversas formas de juego, por lo cual el Blackjack es un desafío estratégico más que en un simple juego de azar.  
+
+Este proyecto tiene como objetivo responder las pregunta planteadas implementando diferentes estrategias clasicas y comparando los resultados entre ellas, en dichas estrategias podemos encontrar desde una muy básica en la cual el jugador maneja una apuesta constante, otras en las cuales se ajusta las apuesta en función de los resultados previamente obtenidos en el juego, e incluso una estrategia muy controversial como lo es el "Card counting", estrategia prohibida en la mayoria de los casinos, los cuales implementan medidas en contra de esta, ya que bajo esta forma de jugar, las probabilidades de ganar se inclinan a hacia el jugador.
+
+A través de múltiples iteraciones para cada simulacion podremos observar cómo la ventaja de la casa puede variar según la estrategia utilizada por el jugador, se espera que mediante el uso de estrategias tradicionales se confirme la ventaja inherente del casino, y que al usar una estrategia como el conteo de cartas se demuestre que esta alternativa permite a el jugador superar a la casa.
+
+&nbsp; 
+
+### Simulación
+
+<div style="text-align: center;">
+  <h2>Simulación en R</h2>
+</div>
+
+Para la simulación usamos unicamente un jugador contra un crupier ya que agregar más jugadores seria irrelevante para nuestro obejetivo y solo agregaria complejidad al simulador, tampoco incluimos algunos aspectos como el seguro (**Insurance**), trabajamos con 6 barajas mezcladas en el zapato, con reorganización tan pronto este se agota, esta reorganización puede ocurrir en medio de una partida sin afectar la mano del jugador.
+
+A continuación, mostraremos cada paso de nuestro programa y explicaremos cómo cada sección contribuye a la correcta ejecución del juego. Una vez que tengamos el juego real configurado, podremos explicar la lógica detrás de las diferentes estrategias y llegar a diferentes conclusiones con la comparación de las mismas.
+
+**Paquetes requeridos**
+
+```{r, warning=FALSE}
+#Rmarkdown
+library(knitr) # usado para crear documentos R Markdown
+library(DT) #usado para crear tablas interactivas.
+library(magrittr) #permite encadenar múltiples funciones en una secuencia.
+library(utils) # contiene funciones básicas de R. 
+#.R
+library(ggplot2) # usado para crear visualizaciones gráficas.
+```
+
+**Implementación**
+
+Primero asignamos la semilla con la que vamos a trabajar
+```{r,eval=FALSE}
+set.seed(101451)
+```
+En el apartado “VARIABLES” encontraremos en primer lugar la creación del entorno “gameEnv” recordando que un entorno nos permite agrupar variables, en este caso agrupamos allí las variables representativas del juego: el stack de fichas, la apuesta actual, los stats que vienen siendo el registro del resultado de las partidas, el conteo de cartas el cual es un atributo que mas adelante se utilizara en la implementación de una estrategia y finalmente el zapato (el cual es creado a partir de una función que se explicara más adelante).
+
+Desglosando un poco más, “deck” representa la baraja de blackjack con sus valores respectivos, y “gameConfig” representa las configuraciones con las que vamos a inicializar nuestro entorno “gameEnv” cada que queramos simular un nuevo juego, las configuraciones incluyen la apuesta por defecto equivalente a \$100, el stack de fichas con el que arranca el jugador igual a \$10.000 y el número de barajas que contendrá el zapato.
+
+```{r, eval=FALSE}
+#---------------------------------- VARIABLES ----------------------------------#
+gameEnv <<- new.env()
+
+deck <<- rep(c(1:10, 10, 10, 10), 4)  
+
+initializeGame <- function(config) {
+  gameEnv$stack <- config$defaultStack
+  gameEnv$currentBet <- config$defaultBet
+  gameEnv$stats <- numeric(0)
+  gameEnv$cardCount <- 0
+  createShoe(config$defaultDecks)
+}
+
+gameConfig <- list(
+  defaultBet = 100,
+  defaultStack = 100000,
+  defaultDecks = 6
+)
+
+DEBUG <<- TRUE
+```
+Finalmente, la variable “DEBUG” nos permite ver las salidas del programa en tiempo real si esta es igual a TRUE, un ejemplo de la salida es: 
+
+![](\Users\PC\Desktop\UIS\6 semestre\Estadistica l\Estadistica1_E2_ProyectoFinal_Team5\informe\imagenes\debug.png){width=20% .center}
+
+&nbsp; 
+
+En el apartado “FUNCIONES” se encuentran todas las funciones que se implementaron para simular el juego de blakjack. 
+
+En primera instancia, la funcion **createShoe()**, esta recibe como parámetro el numero de barajas (n) que tendrá el zapato, luego mezcla estas 6 barajas y asigna a la variable shoe del entorno del juego la lista de las cartas revueltas.
+
+```{r, eval=FALSE}
+#-------------------------------- FUNCIONES ------------------------------------#
+createShoe <- function(n) {
+  gameEnv$shoe <- sample(rep(deck, n))
+}
+```
+**updateCardCount()** es una función especializada en la estrategia de conteo de cartas, esta sigue la lógica del sistema Hi-Lo que se implemento por medio de ifs anidados. Una vez determina el conteo, actualiza la variable “cardCount” que se encuentra dentro del entorno del juego.
+
+```{r, eval=FALSE}
+updateCardCount <- function(cards) {
+  count <- 0
+  
+  for (card in cards) {
+    if (card >= 2 && card <= 6) {
+      count <- count + 1
+    } else if (card >= 7 && card <= 9) {
+      count <- count + 0
+    } else if (card == 10 || card == 1) {
+      count <- count - 1
+    }
+  }
+  
+  gameEnv$cardCount <- gameEnv$cardCount + count
+}
+```
+La funcion **getCards()** obtiene (m) cartas del zapato siempre y cuando el numero de cartas solicitadas se encuentre en el tamaño del zapato, luego guarda las (m) cartas en la variable “shownCards” para después retornarlas, también remueve las cartas extraídas del zapato y actualiza la cuenta de las cartas por medio de la función **updateCardCount()**.
+```{r, eval=FALSE}
+getCards <- function(m = 1) {
+  if (length(gameEnv$shoe) < m) stop("No hay suficientes cartas en el zapato.")
+  
+  shownCards <- gameEnv$shoe[1:m]
+  gameEnv$shoe <- gameEnv$shoe[-(1:m)]
+  updateCardCount(shownCards)
+  
+  return(shownCards)
+}
+```
+
+La funcion **handValue()** como su nombre lo indica calcula el valor de una mano, para esto recibe como parámetro las cartas de las manos, determina automáticamente si hay una AS y si este toma el valor de 1 o 11. Asigna 0 cuando la mano se pasa de 21 y 21.5 cuando se obtiene blackjack, esto dado que el sacar 21 con blackjack es mejor que sacar 21 de cualquier otra forma, por lo que este 21.5 representa la superioridad de obtener 21 de esta forma.
+```{r, eval=FALSE}
+handValue <- function(cards) {
+  value <- sum(cards)
+  
+  if (any(cards == 1) && value <= 11){
+    value <- value + 10
+  }
+  if (value > 21){
+    value <- 0 
+  }  
+  if (value == 21 && length(cards) == 2){
+    value <- 21.5
+  } 
+  
+  return(value)
+}
+```
+**newHand()**  crea una mano con la apuesta actual del entorno del juego, para crear la mano obtiene dos cartas del zapato por medio de la función **getCards()** y finalmente retorna una lista con las cartas de la mano creada y la apuesta de esa mano.
+```{r, eval=FALSE}
+newHand <- function(bet = gameEnv$currentBet) {
+  cards <- getCards(2)
+  list(bet = bet, cards = cards)
+}
+```
+
+**dealerCards()** recibe como parámetro la mano del dealer, y luego implementa la lógica con la que este debe jugar. Pedir con 16 y plantarse con 17, si la mano es 0 significa que la función **handValue()** determinó que el dealer excedió 21.
+```{r, eval=FALSE}
+dealerCards <- function(cards) {
+  
+  while (handValue(cards) < 17 && handValue(cards) > 0) {
+    cards <- c(cards, getCards(1))
+  }
+  
+  return(cards)
+}
+```
+**hit()** permite al jugador realizar la acción de pedir una carta y añadirla a su mano, para ello recibe como parámetro la mano del jugador y solicita una carta por medio de **getCards()** para añadirla a la mano y retornar la mano con la nueva y anteriores cartas.
+```{r,eval=FALSE}
+hit <- function(hand) {
+  newCard <- getCards(1)
+  hand$cards <- c(hand$cards, newCard)
+  return(hand)
+}
+```
+Una función procedimental como **stand()** simula la acción de plantarse por lo que simplemente recibe la mano y la devuelve.
+```{r,eval=FALSE}
+stand <- function(hand) {
+  return(hand)
+}
+```
+**doubleDown()** permite al jugador doblar, es decir recibe la mano del jugador, duplica la apuesta de su mano y pide una carta (**hit()**) para después plantarse (**stand()**)
+```{r,eval=FALSE}
+doubleDown <- function(hand) {
+  gameEnv$currentBet <- gameEnv$currentBet * 2
+  hand <- hit(hand)
+  return(stand(hand)) 
+}
+```
+**splitPair()** permite partir la mano, para ello recibe la mano de dos cartas y forma dos nuevas manos con cada una de las cartas de la mano inicial, cada una con el mismo monto de la puesta inicial, adicionalmente pide una carta para cada nueva mano y devuelve el nuevo par de manos.
+```{r,eval=FALSE}
+splitPair <- function(hand) {
+  
+  card1 <- getCards(1)
+  card2 <- getCards(1)
+  
+  hand1 <- list(bet = gameEnv$currentBet, cards = c(hand$cards[1], card1))
+  hand2 <- list(bet = gameEnv$currentBet, cards = c(hand$cards[2], card2))
+  
+  return(list(hand1, hand2))
+}
+```
+**Winnings()** calcula las ganacias sobre las apuestas de las manos, asignando -1 cuando del jugador pierde, 1 cuando el jugador gana, 0 cuando empata y 1.5 cuando obtiene blackjack.
+```{r, eval=FALSE}
+winnings <- function(dealer, player) {
+  result <- 0
+  
+  if (dealer == 21.5 && player != 21.5){
+    result <- -1
+  } 
+  else if (player == 21.5 && dealer != 21.5){
+    result <- 1.5
+  } 
+  else if (player < dealer && dealer <= 21){
+    result <- -1
+  } 
+  else if (player > dealer && player <= 21){
+    result <- 1
+  } 
+  else if (player == dealer){
+    result <- 0
+  } 
+  
+  gameEnv$stats <- c(gameEnv$stats, result)
+  
+  return(result)
+}
+```
+La ultima función implementada para este simulador de blackjack es la función que permite jugar una mano **playHand()**, la cual recibe como parámetros la estrategia con la que se va a jugar la mano, la mano del jugador con su respectiva apuest y la mano del dealer. Posteriormente, llama a la respectiva estrategia, y le pasa como parámetros: las cartas de la mano, la carta que el dealer revela, la apuesta actual del juego y si la apuesta debe actualizarse o no, para recibir devuelta la acción tomada por la estrategia dadas las condiciones. Luego nos encontramos con algunas salidas para debugear en las cuales por su simplicidad no se entrara en detalle. 
+```{r, eval=FALSE}
+playHand <- function(strategy, hand = newHand(gameEnv$currentBet), dealer = getCards(2)) {
+  
+  action <- strategy(hand$cards, dealer[1], gameEnv$currentBet,  updateBet = TRUE)
+  
+  if (DEBUG) {
+    cat("Inicio de la mano:\n")
+    cat("Initial Bet: ", gameEnv$currentBet, "\n")
+    cat(" Dealer: ", paste(dealer, collapse = "-"), " (", 
+        handValue(dealer), ")\n", sep = "")
+    cat(" Player: ", paste(hand$cards, collapse = "-"), "\n")
+  }
+```
+La función **playHand()** contiene un bucle principal que se rompe cuando el jugador se pasa de 21 o cuando decide plantarse, dentro de este bucle encontramos la lógica para cuando el jugador pide una carta (llamar a **hit()**), dobla (llamar a **dobleDown()**) y divide la mano (llamar a **splitPair()**), dado que esta ultima devuelve dos nuevas manos, se utiliza recursión para jugar cada una de ellas y obtener el resultado. Nótese que dentro del bucle se están pidiendo nuevas acciones a la estrategia.
+```{r,eval=FALSE}
+ while (TRUE) {
+    playerValue <- handValue(hand$cards)
+    if (playerValue == 0 || action == "S"){
+      break
+    } 
+    if (action == "H"){
+      hand <- hit(hand)
+    }
+    if (action == "D"){
+      hand <- doubleDown(hand)
+    } 
+    if (action == "SP") {
+      splitHands <- splitPair(hand)
+      totalResult <- 0
+      
+      for (subHand in splitHands) {
+        totalResult <- totalResult + playHand(strategy, subHand, dealer)
+      }
+      
+      return(totalResult)  
+    }
+    action <- strategy(hand$cards, dealer[1], gameEnv$currentBet)
+    if(DEBUG){
+      cat("Accion: ", action, " -> ", paste(hand$cards, collapse = "-"), " (", handValue(hand$cards), ")", sep = "", "\n")
+    }
+  }
+```
+Fuera del bucle principal, acorde a las reglas del blackjack, una vez los jugadores han terminado sus jugadas valga la redundancia, el dealer pide sus cartas si este tiene menos de 16, luego obtenemos lo que hemos ganado, para ello multiplicamos las ganancias por el valor de la apuesta actual y retornamos el resultado de jugar la mano.
+```{r,eval=FALSE}
+  dealer <- dealerCards(dealer)
+  
+  result <- winnings(handValue(dealer), handValue(hand$cards)) * gameEnv$currentBet
+  gameEnv$stack <- gameEnv$stack + result
+  
+  if (DEBUG) {
+    cat("Fin de la mano:\n")
+    cat(" Player: ", paste(hand$cards, collapse = "-"), " (", handValue(hand$cards), ")\n")
+    cat(" Dealer: ", paste(dealer, collapse = "-"), " (", handValue(dealer), ")\n")
+    cat(" Ganancias: ", result, "\n")
+  }
+  
+  return(result)
+}
+```
+Para culminar, en el apartado de "SIMULACION" se genera una función que permite jugar muchas manos y muchos zapatos con una misma estrategia y finalmente generar un reporte.
+Se inicializa el juego, se crea una variable “allStack” para almacenar los valores de los “stack” después de cada mano, se simula un numero de zapatos (“numShoes”) y dado que un zapato se juega hasta que solo quede aproximadamente un 25% del  mismo, pues esto equivale la mayoría de las veces a jugar 40 manos. 
+```{r,eval=FALSE}
+#-------------------------------- SIMULACION ----------------------------------#
+simulateGames <- function(strategy, numShoes, colorp){
+  initializeGame(gameConfig)
+  
+  startingStack <- gameConfig$defaultStack
+  startingBet <- gameConfig$defaultBet
+  
+  allStacks <- numeric(0)
+  
+  for (shoe in 1:numShoes){
+    
+    cat("Shoe:", shoe, "\n")
+    createShoe(gameConfig$defaultDecks)
+    
+    for (hand in 1:40) {
+      
+      if(DEBUG){
+        cat("Hand:", hand, "\n")
+      }
+      
+      if(length(gameEnv$shoe)>45){
+        playHand(strategy)
+      }else{
+        break 
+      }
+      
+      if(DEBUG){
+        cat("Stats: ", gameEnv$stats, "\n")
+      }
+      
+      allStacks <- c(allStacks, gameEnv$stack)
+      if(DEBUG){
+        cat("Stacks: ", allStacks, "\n")
+      }
+    }
+  }
+  
+  meanStack <- mean(allStacks)
+  sdStack <- sd(allStacks)
+  minStack <- min(allStacks)
+  maxStack <- max(allStacks)
+  impliedHouseEdge <- round((startingStack - meanStack) / ((40*numShoes) * startingBet) * 100, 5)
+  
+  cat("\n--- Reporte ---\n")
+  cat("Media de stacks finales:", meanStack, "\n")
+  cat("Desviación estándar:", sdStack, "\n")
+  cat("Rango:",minStack, "-", maxStack, "\n")
+  cat("Implied House Edge:", impliedHouseEdge, "%\n")
+  
+  
+  ggplot(data.frame(allStacks), aes(x = allStacks)) +
+    geom_histogram(bins = 20, fill = colorp, color = "black") +
+    labs(title = "Distribución de Stacks", x = "Stack Final", y = "Frecuencia") +
+    theme_minimal()
+}
+```
+En la siguiente sección de la pagína encontrara las estrategias que se necesitan para la simulación.
+
+&nbsp; 
+
+
+
+### Estrategias
+
+<div style="text-align: center;">
+  <h2>Estrategias</h2>
+</div>
+
+Ahora que todo está listo para funcionar, vamos a probar algunas estrategias diferentes, recordemos que para inicializar cada una de nuestras ejecuciones de simulación, comenzamos con una pila de 10000 fichas y una apuesta inicial de \$100.
+
+<h2>Simple Strategy</h2>
+
+Representa una estrategia simple en la cual se maneja una apuesta constante en la cual el jugador pide siempre y cuando se cumplan dos condiciones, que el jugador tenga menos de 17 y que la carta visible del dealer sea mayor a 6. Cuando se cumplen estas condiciones podemos decir que el jugador esta obligado a pedir carta para competir contra el dealer, dado que este se plantara con 17 o mas y que tiene 6 en la mesa es muy probable que este obtenga un resultado beneficioso para él. 
+
+```{r, eval=FALSE}
+simpleStrategy <- function(playerCards, dealerFaceCard, ...) {
+  
+  playerValue <- handValue(playerCards)
+  
+  if (handValue(dealerFaceCard) > 6 && playerValue < 17){
+    action <- "H"
+  }else{
+    action <- "S"
+  }
+  
+  return(action)
+}
+```
+Simulamos con 1000 zapatos:
+
+```{r, echo=FALSE}
+simulateGames(simpleStrategy, numShoes=100, colorp="royalblue")
+```
+
+La estrategia simple, aunque básica, resulta ser una de las más consistentes y con pérdidas controladas, sin embargo, su desventaja clave es que opera completamente bajo las reglas estándar del juego, lo que garantiza que la casa mantenga una ventaja implícita del 1.26%, algo esperado al ser una partida basica con las probabilidades clásicas del blackjack. Mediante el uso de esta estrategia el jugador puede ganar ocasionalmente pero obtendra perdidas a largo plazo.
+
+<h2>Test strategy</h2>
+
+Es una función que normalmente sirve para testear que nuestro simulador este funcionando correctamente en todas las jugadas, pero a su vez, simula un jugador entusiasta que prueba una jugada cada que ve la oportunidad. En este caso, divide cada que las reglas del juego lo permiten, dobla cuando tiene exactamente 11, pide cuando tiene menos de 12 y se planta cuando se su mano se encuentra entre el rango de 17 a 21.
+```{r,eval=FALSE}
+testStrategy <- function(playerCards, ...) {
+  
+  playerValue <- handValue(playerCards)
+  
+  if (length(playerCards) == 2 && playerCards[1] == playerCards[2]) {
+    action <- "SP"  
+  } else if (playerValue == 11) {
+    action <- "D" 
+  } else if (playerValue >= 17 && playerValue <= 21) {
+    action <- "S"  
+  } else if (playerValue < 12) {
+    action <- "H"  
+  } else {
+    action <- "H"  
+  }
+  
+  return(action)
+}
+```
+Simulamos con 1 zapato:
+
+```{r, echo=FALSE}
+simulateGames(testStrategy, numShoes = 1, colorp = "mediumorchid")
+```
+
+Podemos observar que la ventaja implícita de la casa es notablemente alta con un valor del 19.09%, por lo cual aunque los resultados son consistentes con perdidas no tan notables, esta estrategia no es favorable a largo plazo, siendo mucho mayor la desventaja respecto a la estrategia anterior.
+
+
+<h2>Luck Strategy</h2>
+
+Es una estrategia que juega con las apuestas, cuando se tiene una racha perdedora de dos veces consecutivas se incrementará el valor de la apuesta en \$10 y cuando se tiene una racha ganadora de dos veces consecutivas se disminuirá el valor de la apuesta en \$10.
+
+La lógica es que, si alcanzamos una racha perdedora, eventualmente podemos esperar que nuestra suerte se dé la vuelta y cuando lo haga nos beneficiaremos apostando un valor mayor a la apuesta inicial, lo contrario es que si alcanzamos una gran racha ganadora, disminuiremos nuestra apuesta para disminuir el impacto de una pérdida inevitable. 
+
+```{r, eval=FALSE}
+ourLuckStrategy <- function(playerCards, dealerFaceCard, bet, 
+                            updateBet = FALSE , 
+                            previousResults = gameEnv$stats, ...) 
+{
+  
+  currentBet <- bet
+  
+  if (updateBet) {
+    if (length(previousResults) >= 2) {
+      lastTwoResults <- tail(previousResults, 2)
+      if (all(lastTwoResults < 0)) {
+        currentBet <- min(currentBet + 10, gameEnv$stack)
+      } else if (all(lastTwoResults > 0)) {
+        currentBet <- max(currentBet - 10, 10)
+      }
+    }
+  }
+  
+  gameEnv$currentBet <- currentBet
+  action <- simpleStrategy(playerCards, dealerFaceCard)
+  if(DEBUG){
+    cat("Nueva apuesta:", currentBet, "\n")
+  }
+  return(action)
+}
+```
+Simulamos con 100 zapatos:
+
+```{r, echo=FALSE}
+simulateGames(ourLuckStrategy, numShoes = 100, colorp = "turquoise")
+```
+
+Esta estrategia puede tener resultados muy dispersos entre simulaciones, pero las grandes perdidas son constantes en estas, disminuyendo en gran medida el stack inicial, tambien observamos que en esta forma de jugar la casa vuelve a sacarle gran ventaja al jugador, sin embargo era de esperarse, ya que solo nos basamos en la "suerte".
+
+
+<h2>Card Counting</h2>
+
+El conteo de cartas es una estrategia intrigante ya que si se hace correctamente el jugador puede cambiar las probabilidades del juego a su favor.
+
+El conteo de cartas funciona de la siguiente manera, a las cartas bajas (2–6) se les asigna +1, a las cartas medias (7–9) se les asigna 0 y a las cartas altas (10-A) se les asigna -1, todo lo que el jugador tiene que hacer es mantener un conteo de estos valores y ajustar su apuesta dependiendo de si el conteo es alto o bajo.
+
+![](https://www.lasvegasadvisor.com/gambling-with-an-edge/wp-content/uploads/2017/08/cards.jpg){width=70% height=200px .center}
+
+La logica se basa en que un conteo alto crea una ventaja para el jugador ya que quedan más cartas altas en el zapato, por lo que el jugador puede obtener más Blackjacks y el crupier hara bust con más frecuencia, por otro lado los recuentos bajos no son favorables para el jugador, por lo que en estos casos la apuesta debe reducirse. 
+
+
+```{r, eval=FALSE}
+cardCountingStrategy <- function(playerCards, dealerFaceCard, bet, 
+                                 updateBet = FALSE,...) {
+  
+  currentBet <- bet
+  
+  if (updateBet) {
+    if (gameEnv$cardCount > 2) {
+      currentBet <- min(bet * 2, gameEnv$stack) 
+    } else if (gameEnv$cardCount < -2) {
+      currentBet <- max(bet / 2, 10)  
+    }
+  }
+  
+  gameEnv$currentBet <- currentBet
+  action <- simpleStrategy(playerCards, dealerFaceCard)
+  if(DEBUG){
+    cat("Nueva apuesta: ", currentBet, 
+        " | Conteo de cartas: ", gameEnv$cardCount, "\n")
+  }
+  
+  return(action)
+}
+```
+Simulamos con 1 zapato:
+```{r, echo=FALSE}
+simulateGames(cardCountingStrategy, numShoes = 1, colorp = "firebrick")
+```
+
+
+El conteo de cartas sobresale drásticamente, demostrando que es la única estrategia que revierte consistentemente la ventaja de la casa. Con un solo zapato, genera ganancias promedio significativas y una ventaja implícita del -274.25%, inclinando las probabilidades hacia el jugador, sin embargo, aumentar el número de zapatos podria dismunuir drasticamente esta ventaja ya que mientras más cartas haya más dificil es el conteo, cabe aclarar que por más ventajosa que sea, se ve más limitada a la hora de la practica real, esto debido a restricciones en casinos.
+
+
+<h2>Optimal Strategy</h2>
+
+Esta estrategia intenta replicar la siguiente tabla de estrategia óptima para blackjack, basada en el tipo de mano (dura, suave o par) y la carta visible del dealer:
+
+
+![](\Users\PC\Desktop\UIS\6 semestre\Estadistica l\Estadistica1_E2_ProyectoFinal_Team5\informe\imagenes\tabla.png){width=50% .center}
+Se claisifican las manos como pares, suaves y duras:
+
+-pares si el jugador tiene exactamente dos cartas y son iguales, suaves significa que incluye Aces y el puntaje del jugador es mayor cuando se cuentan como 11, y duras si no es pares ni una mano suave. 
+```{r, eval=FALSE}
+optimalStrategy <- function(playerCards, dealerFaceCard, bet, 
+                            updateBet = FALSE, ...) {
+  
+  playerValue <- handValue(playerCards)
+  
+  locAce <- playerCards == 1
+  
+  if (length(playerCards) == 2 && playerCards[1] == playerCards[2]) {
+    type <- "pair"
+    if (playerCards[1] == 1) {
+      playerValue <- 2
+    }
+  } else if (sum(locAce) > 0 && (playerValue - sum(locAce)) > handValue(playerCards[!locAce])) {
+    type <- "soft"
+  } else {
+    type <- "hard"
+  }
+  
+  decision <- strategyTable[[type]][as.character(playerValue), as.character(dealerFaceCard)]
+  
+  if (length(decision) == 0 || is.na(decision)) {
+    decision <- simpleStrategy(playerCards, dealerFaceCard)
+  }
+  
+  action <- switch(decision,
+                   "S" = "S",
+                   "H" = "H",
+                   "Ds" = if(length(playerCards) > 2) "S" else "D",
+                   "SP" = if(length(playerCards) == 2) "SP" else "H",
+                   "S")
+  
+  if (updateBet) {
+    gameEnv$currentBet <- bet
+  }
+  
+  return(action)
+}
+```
+Simulamos con 1000 zapatos:
+
+```{r, echo=FALSE}
+simulateGames(optimalStrategy, numShoes = 100, colorp = "goldenrod")
+```
+
+Al contrario de su nombre esta estrategia tiene un desempeño decepcionante, aunque la casa tenga una ligera ventaja de solo el 1.372% esto no era lo esperado. La disiminución del stack inicial y la ventaja de la casa la ponen ligeramente detrás de la estrategia más simple como lo es la "simple strategy", algo en parte sorprendente ya que su toma de desiciones deberia ser óptima al seguir la tabla al pie de la letra.
+
+&nbsp; 
+
+### Referencias
+
+<div style="text-align: center;">
+  <h2>Referencias</h2>
+</div>
+
+Para el desarrollo de este proyecto hemos recurrido a las siguientes fuentes, las cuales nos han proporcionado un enfoque teórico y práctico sobre los temas abordados.
+
+**-** Yihui, X. (n.d.). *R Markdown: HTML document*. Bookdown. https://bookdown.org/yihui/rmarkdown/html-document.html
+
+**-** Mehta, K. (2020, November 25). Blackjack simulator. *Analytics Vidhya*. https://medium.com/analytics-vidhya/blackjack-simulator-d89e763c9a84
+
+
+**-** Nolan, D. (2023). *Data science in R: A case studies approach to computational reasoning and problem solving*. Chapman & Hall/CRC.
+
+**-** Wickham, H. (n.d.). *Environments*. Advanced R. http://adv-r.had.co.nz/Environments.html

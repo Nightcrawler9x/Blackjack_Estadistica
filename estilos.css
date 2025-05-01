@@ -1,0 +1,39 @@
+h1 {
+    color: #5D3FD3; /* Violeta vibrante */
+    font-weight: bold; /* Mantener la negrita */
+}
+
+body {
+  color: #333333;  
+  font-family: 'Roboto', sans-serif;
+}
+
+b, strong {
+  font-weight: bold;
+  color: #000000;  
+}
+
+
+.tabset .nav-pills > li > a {
+    color:  #5D3FD3!important; /* Texto en violeta vibrante */
+    font-weight: bold; /* Mantiene la negrita */
+}
+
+.tabset .nav-pills > li.active > a,
+.tabset .nav-pills > li.active > a:hover {
+    background-color: #5D3FD3 !important; 
+    color: white !important; 
+}
+
+/* Cambiar el color al pasar el mouse */
+.tabset .nav-pills > li > a:hover {
+    color: #5D3FD3!important; /* Texto orqu??dea radiante al pasar el mouse */
+}
+
+.center {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+
